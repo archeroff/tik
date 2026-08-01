@@ -67,7 +67,7 @@ jobs:
       - name: Verify room table exists
         run: |
           status="$(curl -s -o /tmp/room-check.json -w '%{http_code}' \
-            "$SUPABASE_URL/rest/v1/room?select=id&limit=1" \
+            "$SUPABASE_URL/rest/v1/room?select=code&limit=1" \
             -H "apikey: $SUPABASE_SECRET_KEY")"
           echo "Room table check HTTP $status"
           test "$status" = "200"

@@ -53,5 +53,7 @@ export interface GameRoom {
   moveCount: number;
   /** 1-based number of the current set; drives which player plays X. */
   setNumber: number;
+  /** Set wins needed to take the match (best of 3 -> 2). Chosen by the creator. */
+  targetScore: number;
   updatedAt: EpochMs;
 }

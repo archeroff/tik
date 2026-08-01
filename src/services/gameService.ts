@@ -73,6 +73,7 @@ interface RoomRow {
   match_winner: string | null;
   move_count: number;
   set_number: number;
+  target_score: number;
   updated_at: number | null;
 }
 
@@ -89,6 +90,7 @@ function mapRow(row: RoomRow): GameRoom {
     matchWinner: row.match_winner as Player | null,
     moveCount: row.move_count,
     setNumber: row.set_number,
+    targetScore: row.target_score,
     updatedAt: row.updated_at,
   };
 }
@@ -169,11 +171,15 @@ export interface CreateSessionResult {
 }
 
 /**
- * Creates a brand-new session. The database generates a shareable code and
- * seats this client as the creator (X).
+ * Creates a brand-new session. The database generates a shareable code, seats
+ * this client as the creator (X) and records how many sets are needed to win
+ * the match. `bestOf` must be 1, 3, 5 or 7 (defaults to 3).
  */
-export async function createSession(sessionId: string): Promise<CreateSessionResult> {
-  const { data, error } = await getClient().rpc('create_session', { p_session: sessionId });
+export async function createSession(sessionId: string, bestOf = 3): Promise<CreateSessionResult> {
+  const { data, error } = await getClient().rpc('create_session', {
+    p_session: sessionId,
+    p_best_of: bestOf,
+  });
   if (error) throw new Error(error.message);
   return { code: data.code as string, room: mapRow(data.room as RoomRow) };
 }

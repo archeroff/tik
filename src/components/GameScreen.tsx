@@ -52,6 +52,7 @@ export function GameScreen({ game }: { game: GameRoomState }) {
     <div className="game">
       <div className="game__code">
         Room <code className="room-code">{game.code}</code>
+        <span className="game__bestof">Best of {game.bestOf}</span>
       </div>
 
       <div className="players">

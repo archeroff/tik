@@ -135,6 +135,35 @@ button {
 
 /* ---------- Home screen ---------- */
 
+.home__bestof {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.home__select {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.home__select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.home__select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .home__buttons {
   display: flex;
   flex-direction: column;
@@ -196,6 +225,10 @@ button {
   background: rgba(99, 102, 241, 0.16);
   padding: 3px 8px;
   border-radius: 8px;
+}
+
+.game__bestof {
+  margin-left: 10px;
 }
 
 .players {

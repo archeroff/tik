@@ -148,21 +148,24 @@ export function useGameRoom() {
   }, [code]);
 
   /** Creates a brand-new session; the creator plays X and starts first. */
-  const create = useCallback(async () => {
-    setBusy(true);
-    setRoomError(null);
-    try {
-      const { code: created, room: fresh } = await createSession(sessionId);
-      persistCode(created);
-      setCode(created);
-      setRoom(fresh);
-      setScreen('game');
-    } catch (e) {
-      setRoomError(e instanceof Error ? e.message : 'Could not create the session.');
-    } finally {
-      setBusy(false);
-    }
-  }, [sessionId]);
+  const create = useCallback(
+    async (bestOf = 3) => {
+      setBusy(true);
+      setRoomError(null);
+      try {
+        const { code: created, room: fresh } = await createSession(sessionId, bestOf);
+        persistCode(created);
+        setCode(created);
+        setRoom(fresh);
+        setScreen('game');
+      } catch (e) {
+        setRoomError(e instanceof Error ? e.message : 'Could not create the session.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [sessionId],
+  );
 
   /** Joins an existing session using its code. */
   const join = useCallback(
@@ -192,6 +195,7 @@ export function useGameRoom() {
 
   // The symbol this session plays in the current set (alternates per set).
   const setNumber = room?.setNumber ?? 1;
+  const bestOf = room ? room.targetScore * 2 - 1 : 3;
   const mySymbol = useMemo<Player | null>(() => {
     if (isCreator) return creatorSymbol(setNumber);
     if (isJoiner) return joinerSymbol(setNumber);
@@ -273,6 +277,7 @@ export function useGameRoom() {
     isCreator,
     isJoiner,
     setNumber,
+    bestOf,
     mySymbol,
     opponentSymbol,
     opponentDisconnected,

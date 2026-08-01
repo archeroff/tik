@@ -94,6 +94,9 @@ test('full two-player match lifecycle', async ({ browser }) => {
   await expect(pageX.locator('.player-card').nth(0)).toHaveClass(/player-card--x/);
   await expect(cells(pageX).first()).toBeEnabled();
   await expect(cells(pageO).first()).toBeDisabled();
+  // The creator's chosen match length is shown to both players.
+  await expect(pageX.getByText('Best of 3').first()).toBeVisible();
+  await expect(pageO.getByText('Best of 3').first()).toBeVisible();
 
   // O trying to move while it is X's turn is rejected (O's board is disabled).
   await cells(pageO).nth(1).click({ force: true });
@@ -181,4 +184,28 @@ test('full two-player match lifecycle', async ({ browser }) => {
   await joinGame(fresh.page, code);
   await expect(fresh.page.getByText(WAITING).first()).toBeVisible({ timeout: 25_000 });
   await fresh.context.close();
+});
+
+test('creator can choose a best of 1 match', async ({ browser }) => {
+  const x = await openApp(browser);
+  await x.page.locator('.home__select').selectOption('1');
+  const code = await createGame(x.page);
+
+  const o = await openApp(browser);
+  await joinGame(o.page, code);
+  await expect(x.page.getByText('Best of 1').first()).toBeVisible({ timeout: 10_000 });
+
+  // A single set decides everything: no "Next Set", the match is over.
+  await cells(x.page).nth(0).click();
+  await cells(o.page).nth(1).click();
+  await cells(x.page).nth(4).click();
+  await cells(o.page).nth(2).click();
+  await cells(x.page).nth(8).click();
+
+  await expect(x.page.getByText('You won the match!')).toBeVisible();
+  await expect(o.page.getByText('You lost the match!')).toBeVisible();
+  await expect(x.page.getByRole('button', { name: 'Next Set' })).toHaveCount(0);
+
+  await x.context.close();
+  await o.context.close();
 });

@@ -80,7 +80,7 @@ jobs:
     env:
       SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-      CLOUDFLARE_PAGES_PROJECT: ${{ secrets.CLOUDFLARE_PAGES_PROJECT || 'tik' }}
+      CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PROJECT_NAME || vars.CLOUDFLARE_PAGES_PROJECT || 'tik-tak-toe' }}
     steps:
       - uses: actions/checkout@v5
 

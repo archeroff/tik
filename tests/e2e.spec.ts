@@ -138,10 +138,14 @@ test('full two-player match lifecycle', async ({ browser }) => {
   await expect(cells(pageX).first()).toBeDisabled();
 
   // Joiner (X) wins on the second column.
-  await cells(pageO).nth(1).click(); // X: top-middle
-  await cells(pageX).nth(0).click(); // O: top-left
-  await cells(pageO).nth(4).click(); // X: center
-  await cells(pageX).nth(2).click(); // O: top-right
+  await cells(pageO).nth(1).click();
+  await expect(pageX.getByText(TURN_O)).toBeVisible();
+  await cells(pageX).nth(0).click();
+  await expect(pageX.getByText(TURN_X)).toBeVisible();
+  await cells(pageO).nth(4).click();
+  await expect(pageX.getByText(TURN_O)).toBeVisible();
+  await cells(pageX).nth(2).click();
+  await expect(pageX.getByText(TURN_X)).toBeVisible();
   await cells(pageO).nth(7).click(); // X: bottom-middle -> column win
 
   await expect(pageX.getByText('Player X wins this set!').first()).toBeVisible();
@@ -155,9 +159,13 @@ test('full two-player match lifecycle', async ({ browser }) => {
   await expect(pageX.locator('.player-card').nth(0)).toHaveClass(/player-card--x/);
 
   await cells(pageX).nth(0).click();
+  await expect(pageO.getByText(TURN_O)).toBeVisible();
   await cells(pageO).nth(1).click();
+  await expect(pageO.getByText(TURN_X)).toBeVisible();
   await cells(pageX).nth(4).click();
+  await expect(pageO.getByText(TURN_O)).toBeVisible();
   await cells(pageO).nth(2).click();
+  await expect(pageO.getByText(TURN_X)).toBeVisible();
   await cells(pageX).nth(8).click(); // diagonal win again
 
   await expect(pageX.getByText('You won the match!')).toBeVisible();
@@ -203,11 +211,16 @@ test('creator can choose a best of 1 match', async ({ browser }) => {
   await joinGame(o.page, code);
   await expect(x.page.getByText('Best of 1').first()).toBeVisible({ timeout: 10_000 });
 
-  // A single set decides everything: no "Next Set", the match is over.
+  // A single set decides everything: no "Next Set", the match is over. Each
+  // move waits for the server-confirmed turn flip so clicks can't race.
   await cells(x.page).nth(0).click();
+  await expect(x.page.getByText(TURN_O)).toBeVisible();
   await cells(o.page).nth(1).click();
+  await expect(x.page.getByText(TURN_X)).toBeVisible();
   await cells(x.page).nth(4).click();
+  await expect(x.page.getByText(TURN_O)).toBeVisible();
   await cells(o.page).nth(2).click();
+  await expect(x.page.getByText(TURN_X)).toBeVisible();
   await cells(x.page).nth(8).click();
 
   await expect(x.page.getByText('You won the match!')).toBeVisible();
@@ -216,4 +229,22 @@ test('creator can choose a best of 1 match', async ({ browser }) => {
 
   await x.context.close();
   await o.context.close();
+});
+
+test('a shared URL with ?room=CODE joins the session directly', async ({ browser }) => {
+  const creator = await openApp(browser);
+  const code = await createGame(creator.page);
+  await expect(creator.page.getByText(WAITING).first()).toBeVisible();
+
+  // A brand-new visitor opens the shared link and lands straight in the game.
+  const visitor = await browser.newContext();
+  const vpage = await visitor.newPage();
+  await vpage.goto(`/?room=${code}`);
+  await expect(vpage.getByText(WELCOME).first()).toBeVisible({ timeout: 10_000 });
+  // The visitor is seated as O and the creator (X) starts, as on both screens.
+  await expect(vpage.getByText(TURN_X)).toBeVisible();
+  await expect(vpage.locator('.player-card').nth(0)).toHaveClass(/player-card--o/);
+
+  await creator.context.close();
+  await visitor.close();
 });

@@ -95,30 +95,72 @@ export function useGameRoom() {
     }
   };
 
-  // Resume a session from the last visit, so a refresh keeps the seat.
+  // Keep the shareable `?room=CODE` in the address bar without reloading.
+  const setUrlCode = (next: string) => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.set('room', next);
+      window.history.replaceState(null, '', `?${params.toString()}`);
+    } catch {
+      // history/URL manipulation unavailable — the URL just isn't updated
+    }
+  };
+
+  // On load, join a session from a shared deep link (?room=CODE) or resume the
+  // last visited one, so a refresh keeps the seat. The URL param wins. The
+  // code is stashed in sessionStorage the moment the param is consumed, so
+  // React StrictMode's re-run of this effect still finds it.
   useEffect(() => {
     let cancelled = false;
-    let stored: string | null = null;
-    try {
-      stored = sessionStorage.getItem(SESSION_CODE_KEY);
-    } catch {
-      stored = null;
-    }
-    if (!stored) return;
+    let target: string | null = null;
+    let fromUrl = false;
 
-    joinSession(stored, sessionId)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('room');
+      if (raw) {
+        // Consume the param so a later refresh doesn't re-trigger the join.
+        params.delete('room');
+        const rest = params.toString();
+        window.history.replaceState(null, '', rest ? `?${rest}` : window.location.pathname);
+        target = raw.trim().toUpperCase();
+        fromUrl = true;
+        persistCode(target);
+      }
+    } catch {
+      // history/URL manipulation unavailable
+    }
+
+    if (!target) {
+      try {
+        target = sessionStorage.getItem(SESSION_CODE_KEY);
+      } catch {
+        target = null;
+      }
+    }
+    if (!target) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    joinSession(target, sessionId)
       .then(({ room: resumed }) => {
         if (cancelled) return;
-        setCode(stored);
+        setCode(target);
         setRoom(resumed);
         setScreen('game');
+        persistCode(target);
       })
-      .catch(() => {
+      .catch((e) => {
         // The session no longer exists; start fresh from the home screen.
         try {
           sessionStorage.removeItem(SESSION_CODE_KEY);
         } catch {
           // ignore
+        }
+        if (fromUrl) {
+          setRoomError(e instanceof Error ? e.message : 'Could not join the session.');
         }
       });
 
@@ -155,6 +197,7 @@ export function useGameRoom() {
       try {
         const { code: created, room: fresh } = await createSession(sessionId, bestOf);
         persistCode(created);
+        setUrlCode(created);
         setCode(created);
         setRoom(fresh);
         setScreen('game');
@@ -177,6 +220,7 @@ export function useGameRoom() {
       try {
         const { room: joined } = await joinSession(next, sessionId);
         persistCode(next);
+        setUrlCode(next);
         setCode(next);
         setRoom(joined);
         setScreen('game');

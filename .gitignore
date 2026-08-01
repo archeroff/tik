@@ -9,3 +9,4 @@ dev-dist
 *.tsbuildinfo
 /test-results
 /playwright-report
+supabase/.temp/

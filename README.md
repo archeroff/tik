@@ -33,10 +33,11 @@ All mutations run as server-authoritative database functions; anonymous clients 
 ## Setup
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run `supabase/migrations/0001_init.sql` (it creates the
+2. Open **SQL Editor** and run `supabase/migrations/20260801000000_init.sql` (it creates the
    `room` table, the game functions, RLS policies and the Realtime publication).
 3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and
-   `VITE_SUPABASE_ANON_KEY` from **Project Settings → API**.
+   `VITE_SUPABASE_PUBLISHABLE_KEY` from **Project Settings → API** (the public
+   `sb_publishable_...` key).
 4. Install and run:
 
    ```bash
@@ -63,9 +64,33 @@ npm test        # unit tests for the pure game engine
 npm run test:e2e  # full two-player lifecycle against your hosted Supabase project
 ```
 
-The E2E suite needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env` (it calls the
+The E2E suite needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` (it calls the
 `reset_room` RPC to start from a clean state) and a Vite dev server on `localhost:5173`, which
 Playwright starts automatically.
+
+## CI/CD
+
+`.github/workflows/ci.yml` runs on every push to `main` (and `workflow_dispatch`):
+
+1. **Build & test** — `npm ci`, typecheck, unit tests, production build.
+2. **Deploy backend** — `supabase link` + `supabase db push` applies pending files in
+   `supabase/migrations/`, then verifies the `room` table exists.
+3. **Deploy PWA** — builds with the Supabase config baked in and publishes `dist/` to
+   Cloudflare Pages via Wrangler.
+
+Required GitHub Actions secrets:
+
+| Secret | Where to find it |
+| ------ | ---------------- |
+| `SUPABASE_ACCESS_TOKEN` | Supabase Dashboard → Account → Access Tokens (`sbp_...`) |
+| `SUPABASE_PROJECT_ID` | Supabase Dashboard → Project Settings → General (the project ref) |
+| `SUPABASE_DB_PASSWORD` | Supabase Dashboard → Project Settings → Database |
+| `SUPABASE_URL` | Project Settings → API (`https://<ref>.supabase.co`) |
+| `SUPABASE_PUBLISHABLE_KEY` | Project Settings → API (`sb_publishable_...`) |
+| `SUPABASE_SECRET_KEY` | Project Settings → API (`sb_secret_...`, used for the post-deploy check) |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens (Pages edit permission) |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard URL / Workers & Pages overview |
+| `CLOUDFLARE_PAGES_PROJECT` | Cloudflare Pages project name (defaults to `tik`) |
 
 ## Project layout
 

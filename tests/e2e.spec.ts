@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 
 /**
  * End-to-end test of the whole game lifecycle against a hosted Supabase
- * project. Configure `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` in `.env`
- * (apply `supabase/migrations/0001_init.sql` first), then run
+ * project. Configure `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env`
+ * (apply `supabase/migrations/20260801000000_init.sql` first), then run
  * `npm run test:e2e`.
  *
  * NOTE: there is a single shared room, so this file intentionally runs as ONE
@@ -22,11 +22,11 @@ const OPPONENT_GONE = 'Opponent disconnected.';
 // run starts clean (Playwright loads `.env` in its config).
 function supabaseFromEnv() {
   const url = process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set in .env');
+  const publishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !publishableKey) {
+    throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set in .env');
   }
-  return createClient(url, anonKey);
+  return createClient(url, publishableKey);
 }
 
 test.beforeEach(async () => {

@@ -5,13 +5,14 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
  *
  * Copy `.env.example` to `.env` and fill in the values from
  * Supabase Dashboard -> Project Settings -> API (the project URL and the
- * public `anon` key). The `anon` key is safe to ship in the client.
+ * public `sb_publishable_...` key). The publishable key is safe to ship in the
+ * client — it only carries the `anon` role, which Row Level Security constrains.
  */
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
 /** True once the required environment variables are present. */
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
 let client: SupabaseClient | null = null;
 
@@ -19,7 +20,7 @@ let client: SupabaseClient | null = null;
 export function getClient(): SupabaseClient {
   if (!client) {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
-    client = createClient(supabaseUrl!, supabaseAnonKey!);
+    client = createClient(supabaseUrl!, supabasePublishableKey!);
   }
   return client;
 }

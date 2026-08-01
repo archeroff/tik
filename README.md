@@ -91,7 +91,7 @@ Required GitHub Actions secrets:
 | `SUPABASE_SECRET_KEY` | Project Settings → API (`sb_secret_...`, used for the post-deploy check) |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens (Pages edit permission) |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard URL / Workers & Pages overview |
-| `CLOUDFLARE_PAGES_PROJECT` | Cloudflare Pages project name (variable; defaults to `tik-tak-toe`, also honors `CLOUDFLARE_PROJECT_NAME`) |
+| `CLOUDFLARE_PAGES_PROJECT` | Cloudflare Pages project name (variable; defaults to `tik-tak-toes`, also honors `CLOUDFLARE_PROJECT_NAME`) |
 
 ## Project layout
 

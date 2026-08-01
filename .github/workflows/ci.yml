@@ -55,14 +55,10 @@ jobs:
             exit 1
           fi
 
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
       - name: Link project and push migrations
         run: |
-          supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
-          supabase db push
+          npx --yes supabase@latest link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+          npx --yes supabase@latest db push
 
       - name: Verify room table exists
         run: |

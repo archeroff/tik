@@ -4,7 +4,7 @@ import WebSocket from 'ws';
 
 /**
  * End-to-end test of the whole game lifecycle against a hosted Supabase
- * project. Configure `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env`
+ * project. Configure `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` in `.env`
  * (apply `supabase/migrations/20260801000000_init.sql` first), then run
  * `npm run test:e2e`.
  *
@@ -22,10 +22,10 @@ const OPPONENT_GONE = 'Opponent disconnected.';
 // The `reset_room` RPC wipes the shared room to a fresh waiting state so every
 // run starts clean (Playwright loads `.env` in its config).
 function supabaseFromEnv() {
-  const url = process.env.VITE_SUPABASE_URL;
-  const publishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
   if (!url || !publishableKey) {
-    throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set in .env');
+    throw new Error('SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be set in .env');
   }
   return createClient(url, publishableKey, { realtime: { transport: WebSocket } });
 }

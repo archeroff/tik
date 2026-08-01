@@ -6,7 +6,7 @@ export function SetupRequiredScreen() {
         <p className="card__title">Backend not configured</p>
         <p className="card__sub">
           Copy <code>.env.example</code> to <code>.env</code>, add your Supabase project’s{' '}
-          <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>, then run{' '}
+          <code>SUPABASE_URL</code> and <code>SUPABASE_PUBLISHABLE_KEY</code>, then run{' '}
           <code>npm run dev</code>.
         </p>
         <a

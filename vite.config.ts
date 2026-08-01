@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Expose SUPABASE_* (and the default VITE_*) prefixed env vars to import.meta.env,
+  // so the Supabase config can come straight from GitHub Actions vars/secrets.
+  envPrefix: ['VITE_', 'SUPABASE_'],
   plugins: [
     react(),
     VitePWA({

@@ -35,9 +35,10 @@ All mutations run as server-authoritative database functions; anonymous clients 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor** and run `supabase/migrations/20260801000000_init.sql` (it creates the
    `room` table, the game functions, RLS policies and the Realtime publication).
-3. Copy `.env.example` to `.env` and fill in `VITE_SUPABASE_URL` and
-   `VITE_SUPABASE_PUBLISHABLE_KEY` from **Project Settings → API** (the public
-   `sb_publishable_...` key).
+3. Copy `.env.example` to `.env` and export/fill in `SUPABASE_URL` and
+   `SUPABASE_PUBLISHABLE_KEY` from **Project Settings → API** (the project URL and the public
+   `sb_publishable_...` key). The `SUPABASE_*` names match your GitHub Actions variable/secret,
+   so the same values are reused in CI.
 4. Install and run:
 
    ```bash
@@ -64,7 +65,7 @@ npm test        # unit tests for the pure game engine
 npm run test:e2e  # full two-player lifecycle against your hosted Supabase project
 ```
 
-The E2E suite needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` (it calls the
+The E2E suite needs `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in `.env` (it calls the
 `reset_room` RPC to start from a clean state) and a Vite dev server on `localhost:5173`, which
 Playwright starts automatically.
 

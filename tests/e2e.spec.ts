@@ -119,9 +119,9 @@ test('full two-player match lifecycle', async ({ browser }) => {
   // --- Set 2: the joiner becomes X and starts -------------------------------
   await pageO.getByRole('button', { name: 'Next Set' }).click();
   await expect(pageX.getByText(TURN_X)).toBeVisible({ timeout: 10_000 });
-  // Symbols switched: creator card shows O, joiner card shows X.
+  // Symbols switched: each player's own card is on the left.
   await expect(pageX.locator('.player-card').nth(0)).toHaveClass(/player-card--o/);
-  await expect(pageO.locator('.player-card').nth(1)).toHaveClass(/player-card--x/);
+  await expect(pageO.locator('.player-card').nth(0)).toHaveClass(/player-card--x/);
   await expect(cells(pageO).first()).toBeEnabled();
   await expect(cells(pageX).first()).toBeDisabled();
 

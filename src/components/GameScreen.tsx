@@ -34,6 +34,15 @@ export function GameScreen({ game }: { game: GameRoomState }) {
   const creatorTurn = phase === 'playing' && game.currentTurn === creatorSym;
   const joinerTurn = phase === 'playing' && game.currentTurn === joinerSym;
 
+  // "You" always sits on the left, the opponent on the right — whichever seat
+  // each side holds, regardless of the current-set symbols.
+  const meCard = game.isCreator
+    ? { symbol: creatorSym, score: scores.X, turn: creatorTurn }
+    : { symbol: joinerSym, score: scores.O, turn: joinerTurn };
+  const themCard = game.isCreator
+    ? { symbol: joinerSym, score: scores.O, turn: joinerTurn }
+    : { symbol: creatorSym, score: scores.X, turn: creatorTurn };
+
   return (
     <div className="game">
       <div className="game__code">
@@ -42,21 +51,21 @@ export function GameScreen({ game }: { game: GameRoomState }) {
 
       <div className="players">
         <PlayerCard
-          symbol={creatorSym}
-          score={scores.X}
-          isMe={game.isCreator}
-          isCurrentTurn={creatorTurn}
-          disconnected={!game.isCreator && opponentDisconnected}
+          symbol={meCard.symbol}
+          score={meCard.score}
+          isMe
+          isCurrentTurn={meCard.turn}
+          disconnected={false}
         />
         <div className="players__vs" aria-hidden="true">
           vs
         </div>
         <PlayerCard
-          symbol={joinerSym}
-          score={scores.O}
-          isMe={game.isJoiner}
-          isCurrentTurn={joinerTurn}
-          disconnected={!game.isJoiner && opponentDisconnected}
+          symbol={themCard.symbol}
+          score={themCard.score}
+          isMe={false}
+          isCurrentTurn={themCard.turn}
+          disconnected={opponentDisconnected}
         />
       </div>
 

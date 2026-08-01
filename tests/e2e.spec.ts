@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 
 /**
  * End-to-end test of the whole game lifecycle against a hosted Supabase
@@ -26,7 +27,7 @@ function supabaseFromEnv() {
   if (!url || !publishableKey) {
     throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set in .env');
   }
-  return createClient(url, publishableKey);
+  return createClient(url, publishableKey, { realtime: { transport: WebSocket } });
 }
 
 test.beforeEach(async () => {

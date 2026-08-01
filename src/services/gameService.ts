@@ -34,6 +34,32 @@ import type { CellValue, GameRoom, Phase, Player, Seat, SetWinner } from '../typ
 
 const ROOM_ID = 1;
 
+let serverTimeOffsetMs: number | null = null;
+let syncPromise: Promise<number> | null = null;
+
+/**
+ * Estimates the difference between the Supabase server clock and this
+ * browser's clock (`serverNow - Date.now()`), cached after the first call.
+ *
+ * The database writes heartbeat timestamps using its own clock, so comparing
+ * them against `Date.now()` directly is only correct when the two clocks agree
+ * (they often drift, e.g. a browser on a machine whose clock is slightly off).
+ * Every staleness decision in the UI goes through this aligned clock instead.
+ */
+export function getServerTimeOffset(): Promise<number> {
+  if (serverTimeOffsetMs !== null) return Promise.resolve(serverTimeOffsetMs);
+  if (!syncPromise) {
+    syncPromise = (async () => {
+      const sentAt = Date.now();
+      const { data, error } = await getClient().rpc('now_epoch_ms');
+      if (error) throw new Error(error.message);
+      serverTimeOffsetMs = (data as number) - (sentAt + Date.now()) / 2;
+      return serverTimeOffsetMs;
+    })();
+  }
+  return syncPromise;
+}
+
 /** Maps a single `room` row from Postgres to the app's `GameRoom` shape. */
 interface RoomRow {
   id: number;

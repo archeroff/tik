@@ -10,6 +10,7 @@ import {
   advanceToNextSet,
   claimSeat,
   ensureGameStarted,
+  getServerTimeOffset,
   isSeatStale,
   listenToRoom,
   recordMove,
@@ -51,15 +52,34 @@ export function useGameRoom() {
   const [room, setRoom] = useState<GameRoom | null>(null);
   const [roomError, setRoomError] = useState<string | null>(null);
   const [claimResolved, setClaimResolved] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const [claimTick, bumpClaimTick] = useReducer((x: number) => x + 1, 0);
   const claimingRef = useRef(false);
 
-  // Local clock used to judge heartbeat staleness without extra reads.
+  // Alignment between the browser clock and the Supabase server clock, so the
+  // staleness checks below compare like with like (server writes its heartbeat
+  // timestamps using its own clock).
+  const [serverOffset, setServerOffset] = useState(0);
+
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), TICK_INTERVAL_MS);
-    return () => clearInterval(id);
+    let cancelled = false;
+    getServerTimeOffset()
+      .then((offset) => {
+        if (!cancelled) setServerOffset(offset);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Local clock aligned to the server, used to judge heartbeat staleness
+  // without extra reads.
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now() + serverOffset), TICK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [serverOffset]);
 
   // Realtime subscription to the single room document.
   useEffect(() => {

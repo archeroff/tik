@@ -52,8 +52,10 @@ async function openApp(browser: Browser): Promise<{ context: BrowserContext; pag
   return { context, page };
 }
 
-async function createGame(page: Page): Promise<string> {
+async function createGame(page: Page, bestOf?: number): Promise<string> {
   await page.getByRole('button', { name: NEW_GAME }).click();
+  if (bestOf) await page.locator('.home__select').selectOption(String(bestOf));
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.room-code')).toBeVisible({ timeout: 15_000 });
   return (await page.locator('.room-code').innerText()).trim();
 }
@@ -188,8 +190,7 @@ test('full two-player match lifecycle', async ({ browser }) => {
 
 test('creator can choose a best of 1 match', async ({ browser }) => {
   const x = await openApp(browser);
-  await x.page.locator('.home__select').selectOption('1');
-  const code = await createGame(x.page);
+  const code = await createGame(x.page, 1);
 
   const o = await openApp(browser);
   await joinGame(o.page, code);

@@ -177,6 +177,13 @@ button {
   width: min(100%, 300px);
 }
 
+.home__create {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 300px);
+}
+
 .home__input {
   flex: 1;
   min-width: 0;

@@ -39,8 +39,6 @@ function GameApp() {
         )}
         {game.screen !== 'home' && game.status === 'connected' && <GameScreen game={game} />}
       </main>
-
-      <footer className="app__footer">Best of three · players alternate X and O each set</footer>
     </div>
   );
 }

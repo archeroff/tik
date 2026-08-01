@@ -71,13 +71,6 @@ button {
   flex-direction: column;
 }
 
-.app__footer {
-  margin-top: auto;
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  text-align: center;
-}
-
 /* ---------- Generic screens ---------- */
 
 .screen {

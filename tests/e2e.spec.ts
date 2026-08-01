@@ -148,8 +148,8 @@ test('full two-player match lifecycle', async ({ browser }) => {
   await cells(pageO).nth(2).click();
   await cells(pageX).nth(8).click(); // diagonal win again
 
-  await expect(pageX.getByText(/wins the match/).first()).toBeVisible();
-  await expect(pageO.getByText(/wins the match/).first()).toBeVisible();
+  await expect(pageX.getByText('You won the match!')).toBeVisible();
+  await expect(pageO.getByText('You lost the match!')).toBeVisible();
 
   // --- Restart Match resets board and scores, keeps players -----------------
   await pageX.getByRole('button', { name: 'Restart Match' }).click();

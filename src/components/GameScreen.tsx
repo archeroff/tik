@@ -34,6 +34,11 @@ export function GameScreen({ game }: { game: GameRoomState }) {
   const creatorTurn = phase === 'playing' && game.currentTurn === creatorSym;
   const joinerTurn = phase === 'playing' && game.currentTurn === joinerSym;
 
+  // The stored match winner is the symbol of the final set; translate it to
+  // the viewer's own seat so the overlay can speak directly to them.
+  const mySymbol = game.isCreator ? creatorSym : joinerSym;
+  const matchWon = matchWinner === mySymbol;
+
   // "You" always sits on the left, the opponent on the right — whichever seat
   // each side holds, regardless of the current-set symbols.
   const meCard = game.isCreator
@@ -102,8 +107,8 @@ export function GameScreen({ game }: { game: GameRoomState }) {
         )}
 
         {phase === 'matchEnd' && (
-          <Overlay tone="success">
-            <p className="overlay__title">Player {matchWinner} wins the match!</p>
+          <Overlay tone={matchWon ? 'success' : 'info'}>
+            <p className="overlay__title">{matchWon ? 'You won the match!' : 'You lost the match!'}</p>
             <p className="overlay__score">
               {scores.X} : {scores.O}
             </p>

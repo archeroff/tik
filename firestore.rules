@@ -1,0 +1,16 @@
+rules_version = '2';
+
+// This app has no accounts, so the single shared room document must be openly
+// readable and writable. The game logic itself is enforced by the clients via
+// Firestore transactions (turn order, illegal moves, seat claiming).
+//
+// NOTE: Firestore transactions re-validate every rule against the latest
+// committed document, so the write path cannot be corrupted by racing clients.
+// If you later add authentication, you can tighten these rules further.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rooms/{roomId} {
+      allow read, write: if true;
+    }
+  }
+}

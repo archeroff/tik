@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1220" />
+    <title>Offline — Tic-Tac-Toe</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+          sans-serif;
+        color: #e2e8f0;
+        background: radial-gradient(1100px 550px at 50% -10%, #17223d 0%, #0b1220 55%) fixed,
+          #0b1220;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+      }
+      .wrap {
+        max-width: 320px;
+      }
+      .marks {
+        font-size: 2.6rem;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .marks .x {
+        color: #38bdf8;
+      }
+      .marks .o {
+        color: #fbbf24;
+      }
+      .marks .vs {
+        font-size: 1rem;
+        color: #8b9bb4;
+        vertical-align: middle;
+        padding: 0 8px;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 18px 0 8px;
+      }
+      p {
+        color: #8b9bb4;
+        line-height: 1.5;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="marks" aria-hidden="true">
+        <span class="x">X</span><span class="vs">vs</span><span class="o">O</span>
+      </div>
+      <h1>You’re offline</h1>
+      <p>
+        Tic-Tac-Toe needs a live connection to your opponent.<br />
+        Reconnect to jump back into the match.
+      </p>
+    </div>
+  </body>
+</html>

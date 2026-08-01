@@ -232,10 +232,23 @@ button {
   background: rgba(99, 102, 241, 0.16);
   padding: 3px 8px;
   border-radius: 8px;
+  cursor: pointer;
+  user-select: all;
+  transition: background 0.15s ease;
+}
+
+.game__code .room-code:hover {
+  background: rgba(99, 102, 241, 0.28);
 }
 
 .game__bestof {
   margin-left: 10px;
+}
+
+.game__copied {
+  margin-left: 10px;
+  color: var(--success, #34d399);
+  font-size: 0.78rem;
 }
 
 .players {

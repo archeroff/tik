@@ -78,6 +78,13 @@ test('full two-player match lifecycle', async ({ browser }) => {
   await expect(pageX.getByText(WAITING).first()).toBeVisible();
   await expect(cells(pageX).first()).toBeDisabled();
 
+  // Clicking the room code copies it to the clipboard.
+  await x.context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await pageX.locator('.room-code').click();
+  await expect(pageX.getByText('Copied!')).toBeVisible();
+  const clip = await pageX.evaluate(() => navigator.clipboard.readText());
+  expect(clip).toBe(code);
+
   // --- A wrong code is rejected on the home screen --------------------------
   const bad = await openApp(browser);
   await joinGame(bad.page, 'ZZZZZZ');

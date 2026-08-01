@@ -17,6 +17,19 @@ export function GameScreen({ game }: { game: GameRoomState }) {
   const creatorSym = creatorSymbol(setNumber);
   const joinerSym = joinerSymbol(setNumber);
 
+  const [copied, setCopied] = useState(false);
+
+  const copyCode = async () => {
+    if (!game.code) return;
+    try {
+      await navigator.clipboard.writeText(game.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard unavailable (e.g. insecure context) — nothing to do
+    }
+  };
+
   // Transient "Let's get started!" banner whenever a fresh match enters play
   // (0-0 score, no moves yet). It shows for a few seconds or until the first
   // move, whichever comes first — so both players always see it.
@@ -51,8 +64,12 @@ export function GameScreen({ game }: { game: GameRoomState }) {
   return (
     <div className="game">
       <div className="game__code">
-        Room <code className="room-code">{game.code}</code>
+        Room{' '}
+        <code className="room-code" title="Click to copy" role="button" tabIndex={0} onClick={copyCode}>
+          {game.code}
+        </code>
         <span className="game__bestof">Best of {game.bestOf}</span>
+        {copied && <span className="game__copied">Copied!</span>}
       </div>
 
       <div className="players">

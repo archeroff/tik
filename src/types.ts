@@ -1,5 +1,3 @@
-import type { Timestamp } from 'firebase/firestore';
-
 /** A player symbol. X always starts a set (classic rules). */
 export type Player = 'X' | 'O';
 
@@ -12,25 +10,29 @@ export type Phase = 'waiting' | 'playing' | 'setEnd' | 'matchEnd';
 /** Result of the current set. */
 export type SetWinner = Player | 'draw' | null;
 
-/** A server timestamp inside Firestore arrives as a `Timestamp`. */
-export type FireTimestamp = Timestamp | number | null;
+/**
+ * A server timestamp in epoch milliseconds, written by the database so the
+ * browser can compare it directly with `Date.now()`.
+ */
+export type EpochMs = number | null;
 
 /**
- * A seat is "who is currently holding this symbol". `lastSeen` is a server
- * timestamp refreshed by a client-side heartbeat; when it goes stale the seat
- * is treated as free so a new player can take over.
+ * A seat is "who is currently holding this symbol". `lastSeen` is refreshed by
+ * a client-side heartbeat; when it goes stale the seat is treated as free so a
+ * new player can take over.
  */
 export interface Seat {
-  sessionId: string;
-  lastSeen: FireTimestamp;
+  sessionId: string | null;
+  lastSeen: EpochMs;
 }
 
 /**
  * The full state of the single shared game room.
  *
- * There is exactly ONE document (`rooms/game`); no rooms, codes or usernames.
- * Every client subscribes to this document and all state changes are written
- * here inside Firestore transactions so the two players can never race.
+ * There is exactly ONE room (a single Supabase `room` row); no rooms, codes or
+ * usernames. Every client subscribes to that row and all state changes are
+ * applied inside server-authoritative database functions so the two players
+ * can never race.
  */
 export interface GameRoom {
   seatX: Seat | null;
@@ -43,5 +45,5 @@ export interface GameRoom {
   setWinner: SetWinner;
   matchWinner: Player | null;
   moveCount: number;
-  updatedAt: FireTimestamp;
+  updatedAt: EpochMs;
 }

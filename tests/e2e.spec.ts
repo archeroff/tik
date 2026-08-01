@@ -1,8 +1,10 @@
-import { expect, request, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
 
 /**
- * End-to-end test of the whole game lifecycle against the Firebase Firestore
- * emulator. Start the emulator first (`npm run emulate`) then run
+ * End-to-end test of the whole game lifecycle against a hosted Supabase
+ * project. Configure `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` in `.env`
+ * (apply `supabase/migrations/0001_init.sql` first), then run
  * `npm run test:e2e`.
  *
  * NOTE: there is a single shared room, so this file intentionally runs as ONE
@@ -16,16 +18,20 @@ const WELCOME = 'Let’s get started!';
 const SPECTATOR = 'Game already started.';
 const OPPONENT_GONE = 'Opponent disconnected.';
 
-// The Firestore emulator accepts REST writes without auth, so the test can
-// reset the shared room before every run.
-const EMULATOR = process.env.FIRESTORE_EMULATOR_HOST ?? 'localhost:8080';
-const PROJECT_ID = 'demo-tic-tac-toe';
-const ROOM_URL = `http://${EMULATOR}/v1/projects/${PROJECT_ID}/databases/(default)/documents/rooms/game`;
+// The `reset_room` RPC wipes the shared room to a fresh waiting state so every
+// run starts clean (Playwright loads `.env` in its config).
+function supabaseFromEnv() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set in .env');
+  }
+  return createClient(url, anonKey);
+}
 
 test.beforeEach(async () => {
-  const api = await request.newContext({ baseURL: `http://${EMULATOR}` });
-  await api.delete(ROOM_URL).catch(() => {});
-  await api.dispose();
+  const { error } = await supabaseFromEnv().rpc('reset_room');
+  if (error) throw new Error(`Failed to reset room: ${error.message}`);
 });
 
 function cells(page: Page) {

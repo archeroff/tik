@@ -1,61 +1,74 @@
-import {
-  doc,
-  getDoc,
-  onSnapshot,
-  runTransaction,
-  serverTimestamp,
-  updateDoc,
-  type Timestamp,
-} from 'firebase/firestore';
-import { db } from '../firebase/firestore';
-import { DISCONNECT_TIMEOUT_MS, MATCH_WINS, createInitialRoom, emptyBoard, evaluateBoard, other } from '../game/engine';
-import type { FireTimestamp, GameRoom, Phase, Player, Seat, SetWinner } from '../types';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { DISCONNECT_TIMEOUT_MS } from '../game/engine';
+import { getClient } from '../supabase/client';
+import type { CellValue, GameRoom, Phase, Player, Seat, SetWinner } from '../types';
 
 /**
  * THE SYNCHRONIZATION LAYER
  * ------------------------
  *
- * There is exactly ONE game room for the whole app, backed by a single
- * Firestore document at `rooms/game`. Every connected client subscribes to
- * that document with a realtime listener, so any change written by one player
- * is pushed to the other within a few hundred milliseconds — no page refresh,
- * no room codes.
+ * There is exactly ONE game room for the whole app, backed by a single row in
+ * the Supabase `room` table. Every connected client reads that row and
+ * subscribes to Postgres changes (Realtime), so any change written by one
+ * player is pushed to the other within a few hundred milliseconds — no page
+ * refresh, no room codes.
  *
- *   presence   -> two `seat` fields holding { sessionId, lastSeen }. Each
- *                 seated client refreshes its own `lastSeen` on a 3s heartbeat
- *                 (server timestamp). A seat whose heartbeat is older than
- *                 `DISCONNECT_TIMEOUT_MS` is considered empty.
- *   seating    -> a client claims the first free/stale seat inside a
- *                 transaction. If BOTH seats are gone the room is reset to a
- *                 brand-new `waiting` room (the waiting room only reopens when
- *                 both players are gone). Otherwise the board/score state is
- *                 preserved and the joiner simply becomes the missing player.
- *   moves      -> every move is a Firestore transaction that re-validates the
- *                 full game rules (phase, turn, empty cell, opponent present)
- *                 before writing, so two players can never corrupt the state
- *                 even if they click at the same moment.
- *   match flow -> the same transaction advances scores, set phase and match
+ *   presence   -> `seat_x` / `seat_o` columns holding { session, lastSeen }.
+ *                 Each seated client refreshes its own `lastSeen` with a 3 s
+ *                 heartbeat (server epoch ms). A seat whose heartbeat is older
+ *                 than `DISCONNECT_TIMEOUT_MS` is considered empty.
+ *   seating    -> `claim_seat` takes the first free/stale seat. If BOTH seats
+ *                 are gone the room is reset to a brand-new `waiting` room
+ *                 (the waiting room only reopens when both players are gone).
+ *                 Otherwise the board/score state is preserved and the joiner
+ *                 simply becomes the missing player.
+ *   moves      -> every move goes through the `record_move` database function,
+ *                 which re-validates the full game rules (phase, turn, empty
+ *                 cell, opponent present) under a row lock, so two players can
+ *                 never corrupt the state even if they click at the same
+ *                 moment. All mutations are SECURITY DEFINER functions; the
+ *                 table itself is select-only to anonymous clients.
+ *   match flow -> the same function advances scores, set phase and match
  *                 phase, so all clients always converge on one truth.
  */
 
-const ROOM_PATH = 'rooms/game';
+const ROOM_ID = 1;
 
-/** Guards against calling into Firestore before it is configured. */
-function getDb() {
-  if (!db) throw new Error('Firebase is not configured.');
-  return db;
+/** Maps a single `room` row from Postgres to the app's `GameRoom` shape. */
+interface RoomRow {
+  id: number;
+  seat_x_session: string | null;
+  seat_x_last_seen: number | null;
+  seat_o_session: string | null;
+  seat_o_last_seen: number | null;
+  board: (string | null)[];
+  current_turn: string;
+  scores: { X: number; O: number };
+  phase: string;
+  set_winner: string | null;
+  match_winner: string | null;
+  move_count: number;
+  updated_at: number | null;
 }
 
-/** Resolves the room document lazily so the module can load without config. */
-function getRoomRef() {
-  return doc(getDb(), ROOM_PATH);
+function mapRow(row: RoomRow): GameRoom {
+  return {
+    seatX: row.seat_x_session ? { sessionId: row.seat_x_session, lastSeen: row.seat_x_last_seen } : null,
+    seatO: row.seat_o_session ? { sessionId: row.seat_o_session, lastSeen: row.seat_o_last_seen } : null,
+    board: row.board as CellValue[],
+    currentTurn: row.current_turn as Player,
+    scores: row.scores,
+    phase: row.phase as Phase,
+    setWinner: row.set_winner as SetWinner,
+    matchWinner: row.match_winner as Player | null,
+    moveCount: row.move_count,
+    updatedAt: row.updated_at,
+  };
 }
 
-/** Converts a Firestore server timestamp (or raw ms) into milliseconds. */
-export function toMillis(value: FireTimestamp): number {
-  if (value == null) return 0;
-  if (typeof value === 'number') return value;
-  return (value as Timestamp).toMillis();
+/** Server timestamps already arrive as epoch milliseconds. */
+export function toMillis(value: number | null): number {
+  return value ?? 0;
 }
 
 /** True when the seat is empty or its heartbeat is older than the timeout. */
@@ -68,17 +81,55 @@ export type RoomListener = (room: GameRoom | null) => void;
 export type RoomErrorListener = (error: Error) => void;
 
 /**
- * Subscribes to realtime updates of the single room document. `onNext` is
- * called immediately with the current state and again on every change.
+ * Subscribes to realtime updates of the single room row. `onNext` is called
+ * once immediately with the current state and again on every change. Returns
+ * an unsubscribe function.
  */
 export function listenToRoom(onNext: RoomListener, onError: RoomErrorListener): () => void {
-  return onSnapshot(
-    getRoomRef(),
-    {
-      next: (snapshot) => onNext(snapshot.exists() ? (snapshot.data() as GameRoom) : null),
-      error: (err) => onError(err as Error),
-    },
-  );
+  const supabase = getClient();
+  let lastUpdatedAt = -1;
+  let disposed = false;
+
+  const apply = (row: RoomRow | null) => {
+    if (disposed) return;
+    if (!row) {
+      onNext(null);
+      return;
+    }
+    // Guard against out-of-order delivery (initial fetch racing a change).
+    if ((row.updated_at ?? 0) < lastUpdatedAt) return;
+    lastUpdatedAt = row.updated_at ?? 0;
+    onNext(mapRow(row));
+  };
+
+  const channel = supabase
+    .channel('room-realtime')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'room' },
+      (payload: RealtimePostgresChangesPayload<RoomRow>) => {
+        apply((payload.new as RoomRow) ?? null);
+      },
+    )
+    .subscribe();
+
+  supabase
+    .from('room')
+    .select('*')
+    .eq('id', ROOM_ID)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) {
+        onError(new Error(error.message));
+        return;
+      }
+      apply((data as RoomRow) ?? null);
+    });
+
+  return () => {
+    disposed = true;
+    supabase.removeChannel(channel).catch(() => {});
+  };
 }
 
 export interface ClaimResult {
@@ -87,154 +138,46 @@ export interface ClaimResult {
 }
 
 /**
- * Attempts to seat the given session on the room.
- *
- * Rules applied atomically:
- *  1. If the session already holds a seat (e.g. a page refresh), refresh it.
- *  2. If both seats are gone, reset the room to a fresh waiting room and take X.
- *  3. Otherwise take the first free/stale seat (X preferred).
- *  4. Otherwise the room is full -> spectator, rejected.
+ * Attempts to seat the given session on the room. All rules are enforced
+ * atomically inside the `claim_seat` database function.
  */
 export async function claimSeat(sessionId: string): Promise<ClaimResult> {
-  return runTransaction(getDb(), async (tx) => {
-    const ref = getRoomRef();
-    const snapshot = await tx.get(ref);
-    const room = snapshot.exists() ? (snapshot.data() as GameRoom) : null;
-    const now = Date.now();
-
-    if (room) {
-      if (room.seatX?.sessionId === sessionId) {
-        tx.update(ref, { 'seatX.lastSeen': serverTimestamp() });
-        return { claimed: true, symbol: 'X' };
-      }
-      if (room.seatO?.sessionId === sessionId) {
-        tx.update(ref, { 'seatO.lastSeen': serverTimestamp() });
-        return { claimed: true, symbol: 'O' };
-      }
-    }
-
-    const xFree = isSeatStale(room?.seatX, now);
-    const oFree = isSeatStale(room?.seatO, now);
-
-    if (xFree && oFree) {
-      // Both players disconnected: the waiting room reopens.
-      tx.set(ref, {
-        ...createInitialRoom(sessionId),
-        updatedAt: serverTimestamp(),
-      });
-      return { claimed: true, symbol: 'X' };
-    }
-
-    if (xFree) {
-      tx.update(ref, { seatX: { sessionId, lastSeen: serverTimestamp() } });
-      return { claimed: true, symbol: 'X' };
-    }
-
-    if (oFree) {
-      tx.update(ref, { seatO: { sessionId, lastSeen: serverTimestamp() } });
-      return { claimed: true, symbol: 'O' };
-    }
-
-    return { claimed: false, symbol: null };
-  });
+  const { data, error } = await getClient().rpc('claim_seat', { p_session: sessionId });
+  if (error) throw new Error(error.message);
+  return {
+    claimed: Boolean(data?.claimed),
+    symbol: (data?.symbol as Player | null) ?? null,
+  };
 }
 
 /**
  * Flips the room from `waiting` to `playing` as soon as both seats are held.
- *
- * This is deliberately NOT a transaction: it only ever moves the phase forward
- * to `playing`, and every client writing the same value is idempotent. Using a
- * plain conditional update avoids needless conflicts with the seat heartbeats
- * that churn the document every few seconds.
+ * Idempotent and safe to call from every client.
  */
 export async function ensureGameStarted(): Promise<void> {
-  const ref = getRoomRef();
-  const snapshot = await getDoc(ref);
-  if (!snapshot.exists()) return;
-  const room = snapshot.data() as GameRoom;
-  const now = Date.now();
-  const bothPresent = !isSeatStale(room.seatX, now) && !isSeatStale(room.seatO, now);
-  if (bothPresent && room.phase === 'waiting') {
-    await updateDoc(ref, { phase: 'playing', updatedAt: serverTimestamp() });
-  }
+  const { error } = await getClient().rpc('ensure_game_started');
+  if (error) throw new Error(error.message);
 }
 
 /**
- * Records one move. The transaction re-validates every rule against the latest
- * committed state so a move can never be made out of turn, on a taken cell,
- * after the set/match ended, or against a disconnected opponent.
+ * Records one move. The `record_move` database function re-validates every
+ * rule against the latest committed state under a row lock, so a move can
+ * never be made out of turn, on a taken cell, after the set/match ended, or
+ * against a disconnected opponent.
  */
 export async function recordMove(sessionId: string, symbol: Player, index: number): Promise<void> {
-  await runTransaction(getDb(), async (tx) => {
-    const ref = getRoomRef();
-    const snapshot = await tx.get(ref);
-    if (!snapshot.exists()) throw new Error('Room not found.');
-    const room = snapshot.data() as GameRoom;
-    const now = Date.now();
-
-    if (room.phase !== 'playing') throw new Error('The set is not in progress.');
-    if (room.currentTurn !== symbol) throw new Error("It is not this player's turn.");
-    if (room.seatX?.sessionId !== sessionId && room.seatO?.sessionId !== sessionId) {
-      throw new Error('Player is not seated.');
-    }
-    const opponentSeat = symbol === 'X' ? room.seatO : room.seatX;
-    if (isSeatStale(opponentSeat, now)) throw new Error('Opponent disconnected.');
-    if (room.board[index] !== null) throw new Error('Cell is already taken.');
-
-    const board = [...room.board];
-    board[index] = symbol;
-
-    const result = evaluateBoard(board);
-    const scores = { ...room.scores };
-
-    let phase: Phase = room.phase;
-    let setWinner: SetWinner = result.winner;
-    let matchWinner: Player | null = room.matchWinner;
-
-    if (result.winner === 'draw') {
-      // A drawn set awards no point; the match simply continues.
-      phase = 'setEnd';
-    } else if (result.winner === 'X' || result.winner === 'O') {
-      scores[result.winner] += 1;
-      if (scores[result.winner] >= MATCH_WINS) {
-        phase = 'matchEnd';
-        matchWinner = result.winner;
-      } else {
-        phase = 'setEnd';
-      }
-    }
-
-    tx.update(ref, {
-      board,
-      scores,
-      phase,
-      setWinner,
-      matchWinner,
-      currentTurn: result.winner ? room.currentTurn : other(symbol),
-      moveCount: room.moveCount + 1,
-      updatedAt: serverTimestamp(),
-    });
+  const { error } = await getClient().rpc('record_move', {
+    p_session: sessionId,
+    p_symbol: symbol,
+    p_cell: index,
   });
+  if (error) throw new Error(error.message);
 }
 
 /** Resets the board after a set ends; scores are intentionally kept. */
 export async function advanceToNextSet(): Promise<void> {
-  await runTransaction(getDb(), async (tx) => {
-    const ref = getRoomRef();
-    const snapshot = await tx.get(ref);
-    if (!snapshot.exists()) throw new Error('Room not found.');
-    const room = snapshot.data() as GameRoom;
-    if (room.phase !== 'setEnd') throw new Error('No finished set to advance from.');
-
-    tx.update(ref, {
-      board: emptyBoard(),
-      currentTurn: 'X',
-      phase: 'playing',
-      setWinner: null,
-      moveCount: 0,
-      updatedAt: serverTimestamp(),
-    });
-  });
+  const { error } = await getClient().rpc('advance_next_set');
+  if (error) throw new Error(error.message);
 }
 
 /**
@@ -242,27 +185,12 @@ export async function advanceToNextSet(): Promise<void> {
  * players seated, so the waiting room does not reopen.
  */
 export async function restartMatch(): Promise<void> {
-  await runTransaction(getDb(), async (tx) => {
-    const ref = getRoomRef();
-    const snapshot = await tx.get(ref);
-    if (!snapshot.exists()) throw new Error('Room not found.');
-    const room = snapshot.data() as GameRoom;
-    if (room.phase !== 'matchEnd') throw new Error('No finished match to restart.');
-
-    tx.update(ref, {
-      board: emptyBoard(),
-      currentTurn: 'X',
-      scores: { X: 0, O: 0 },
-      phase: 'playing',
-      setWinner: null,
-      matchWinner: null,
-      moveCount: 0,
-      updatedAt: serverTimestamp(),
-    });
-  });
+  const { error } = await getClient().rpc('restart_match');
+  if (error) throw new Error(error.message);
 }
 
 /** Refreshes this player's seat heartbeat so their seat is not reclaimed. */
-export function sendHeartbeat(symbol: Player): Promise<void> {
-  return updateDoc(getRoomRef(), { [`seat${symbol}.lastSeen`]: serverTimestamp() });
+export async function sendHeartbeat(sessionId: string, symbol: Player): Promise<void> {
+  const { error } = await getClient().rpc('heartbeat', { p_session: sessionId, p_symbol: symbol });
+  if (error) throw new Error(error.message);
 }

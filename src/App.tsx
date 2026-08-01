@@ -1,4 +1,4 @@
-import { isFirebaseConfigured } from './firebase/config';
+import { isSupabaseConfigured } from './supabase/client';
 import { ErrorScreen } from './components/ErrorScreen';
 import { GameScreen } from './components/GameScreen';
 import { LoadingScreen } from './components/LoadingScreen';
@@ -7,7 +7,7 @@ import { SpectatorScreen } from './components/SpectatorScreen';
 import { useGameRoom } from './hooks/useGameRoom';
 
 export default function App() {
-  if (!isFirebaseConfigured) {
+  if (!isSupabaseConfigured) {
     return (
       <div className="app">
         <header className="app__header">

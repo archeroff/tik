@@ -130,12 +130,12 @@ export function useGameRoom() {
   useEffect(() => {
     if (!mySymbol) return;
     const beat = () => {
-      sendHeartbeat(mySymbol).catch(() => {});
+      sendHeartbeat(sessionId, mySymbol).catch(() => {});
     };
     beat();
     const id = setInterval(beat, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [mySymbol]);
+  }, [mySymbol, sessionId]);
 
   const bothSeatsPresent =
     !!room && !isSeatStale(room.seatX, now) && !isSeatStale(room.seatO, now);

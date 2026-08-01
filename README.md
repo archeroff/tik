@@ -1,12 +1,14 @@
 # Tic-Tac-Toe PWA — two players, real-time, best of three
 
-A minimalistic, installable Progressive Web App for a single 2-player Tic-Tac-Toe match,
-synchronized in real time through Supabase (Postgres + Realtime). No rooms, no codes, no accounts:
+A minimalistic, installable Progressive Web App for a 2-player Tic-Tac-Toe match, synchronized
+in real time through Supabase (Postgres + Realtime). Play happens in shareable **sessions**:
 
-- first connection becomes **Player X**, second becomes **Player O**,
-- any further visitor is rejected until the match ends or a player disconnects,
+- the player who creates a session gets a 6-character **code** and plays **X**,
+- the opponent joins with that code and plays **O**,
+- symbols **alternate between sets** (best of three), so the player who starts first is
+  shared fairly across the match,
 - winner is the first player to win **2 out of 3 sets** (draws award no point),
-- if a player disconnects mid-match the game pauses and a new player takes the seat.
+- if a player disconnects mid-match the game pauses and a new player can join with the same code.
 
 ## Stack
 
@@ -15,17 +17,18 @@ service worker + manifest), plain CSS (mobile-first).
 
 ## How the synchronization works
 
-Everything lives in **one** row of the Supabase `room` table:
+Every session lives in its own row of the Supabase `room` table, keyed by its `code`:
 
 | Mechanism  | How it works                                                                                                      |
 | ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| Real-time  | Every client subscribes with `postgres_changes` (Realtime); any write by one player is pushed to the other.       |
+| Real-time  | Each client subscribes with `postgres_changes` (Realtime) filtered by its code; any write by one player is pushed to the other. |
 | Presence   | Each seated client refreshes its `lastSeen` (server epoch ms) every 3 s via the `heartbeat` RPC. A seat older than |
 |            | 12 s is treated as free.                                                                                           |
-| Seating    | `claim_seat` (a SECURITY DEFINER function) takes the first free/stale seat, or — only when *both* seats are gone — |
-|            | resets the room to a fresh `waiting` room (the waiting room never reopens for a live match).                       |
-| Moves      | `record_move` re-validates phase, turn, empty cell and opponent presence under a row lock before committing.       |
-| Match flow | The same function advances the board, the set score and the match result atomically.                               |
+| Session    | `create_session` generates a code and seats the creator (X); `join_session` seats the opponent (O) — or re-seats a |
+|            | returning player. The game starts the moment both seats are held.                                                   |
+| Moves      | `record_move` derives the mover's symbol from their seat + the set number and re-validates phase, turn, empty cell |
+|            | and opponent presence under a row lock before committing.                                                           |
+| Match flow | The same function advances the board, the set score and the match result atomically; the set number flips who plays X. |
 
 All mutations run as server-authoritative database functions; anonymous clients can only
 **select** the room row.
@@ -33,8 +36,8 @@ All mutations run as server-authoritative database functions; anonymous clients 
 ## Setup
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** and run `supabase/migrations/20260801000000_init.sql` (it creates the
-   `room` table, the game functions, RLS policies and the Realtime publication).
+2. Open **SQL Editor** and run the migrations in `supabase/migrations/` (they create the
+   `room` table, the session functions, RLS policies and the Realtime publication).
 3. Copy `.env.example` to `.env` and export/fill in `SUPABASE_URL` and
    `SUPABASE_PUBLISHABLE_KEY` from **Project Settings → API** (the project URL and the public
    `sb_publishable_...` key). The `SUPABASE_*` names match your GitHub Actions variable/secret,
@@ -55,8 +58,10 @@ All mutations run as server-authoritative database functions; anonymous clients 
 
 ## Playing across two devices
 
-Run the app on two different browsers/devices (or two private windows) and open the same URL.
-The first visitor is X, the second is O; everyone else sees the “Game already started” screen.
+On the first device tap **New game** and share the generated 6-character code with the second
+device; on the second device tap **Join game** and enter the code. The creator plays X first; the
+symbols swap every set, best of three. A refresh (or even a new device) can re-join with the same
+code as long as a seat is free.
 
 ## Tests
 

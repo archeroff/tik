@@ -1,9 +1,9 @@
 import { isSupabaseConfigured } from './supabase/client';
 import { ErrorScreen } from './components/ErrorScreen';
 import { GameScreen } from './components/GameScreen';
+import { HomeScreen } from './components/HomeScreen';
 import { LoadingScreen } from './components/LoadingScreen';
 import { SetupRequiredScreen } from './components/SetupRequiredScreen';
-import { SpectatorScreen } from './components/SpectatorScreen';
 import { useGameRoom } from './hooks/useGameRoom';
 
 export default function App() {
@@ -32,13 +32,15 @@ function GameApp() {
       </header>
 
       <main className="app__main">
-        {game.status === 'loading' && <LoadingScreen />}
-        {game.status === 'error' && <ErrorScreen message={game.error} onRetry={game.retry} />}
-        {game.status === 'spectator' && <SpectatorScreen />}
-        {game.status === 'connected' && <GameScreen game={game} />}
+        {game.screen === 'home' && <HomeScreen game={game} />}
+        {game.screen !== 'home' && game.status === 'loading' && <LoadingScreen />}
+        {game.screen !== 'home' && game.status === 'error' && (
+          <ErrorScreen message={game.error} onRetry={game.retry} />
+        )}
+        {game.screen !== 'home' && game.status === 'connected' && <GameScreen game={game} />}
       </main>
 
-      <footer className="app__footer">Best of three sets · X always starts</footer>
+      <footer className="app__footer">Best of three · players alternate X and O each set</footer>
     </div>
   );
 }

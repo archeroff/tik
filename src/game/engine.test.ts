@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   MATCH_WINS,
-  createInitialRoom,
-  emptyBoard,
+  creatorSymbol,
   evaluateBoard,
+  joinerSymbol,
   other,
 } from './engine';
 
@@ -53,15 +53,17 @@ describe('other', () => {
   });
 });
 
-describe('createInitialRoom', () => {
-  it('builds a fresh waiting room with X seated', () => {
-    const room = createInitialRoom('session-1');
-    expect(room.phase).toBe('waiting');
-    expect(room.seatX?.sessionId).toBe('session-1');
-    expect(room.seatO).toBeNull();
-    expect(room.board).toEqual(emptyBoard());
-    expect(room.scores).toEqual({ X: 0, O: 0 });
-    expect(room.currentTurn).toBe(X);
+describe('alternating symbols (best of three)', () => {
+  it('creator plays X on odd sets and O on even sets', () => {
+    expect(creatorSymbol(1)).toBe(X);
+    expect(creatorSymbol(2)).toBe(O);
+    expect(creatorSymbol(3)).toBe(X);
+  });
+
+  it('joiner always takes the opposite symbol', () => {
+    expect(joinerSymbol(1)).toBe(O);
+    expect(joinerSymbol(2)).toBe(X);
+    expect(joinerSymbol(3)).toBe(O);
   });
 });
 

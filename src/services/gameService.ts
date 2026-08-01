@@ -7,21 +7,20 @@ import type { CellValue, GameRoom, Phase, Player, Seat, SetWinner } from '../typ
  * THE SYNCHRONIZATION LAYER
  * ------------------------
  *
- * There is exactly ONE game room for the whole app, backed by a single row in
- * the Supabase `room` table. Every connected client reads that row and
- * subscribes to Postgres changes (Realtime), so any change written by one
- * player is pushed to the other within a few hundred milliseconds — no page
- * refresh, no room codes.
+ * Every game session lives in its own row of the Supabase `room` table,
+ * identified by a short shareable code. The creator generates the code (and
+ * becomes X); the opponent joins with it (becomes O). Each connected client
+ * reads its session's row and subscribes to Postgres changes (Realtime), so
+ * any change written by one player is pushed to the other within a few hundred
+ * milliseconds — no page refresh.
  *
  *   presence   -> `seat_x` / `seat_o` columns holding { session, lastSeen }.
  *                 Each seated client refreshes its own `lastSeen` with a 3 s
  *                 heartbeat (server epoch ms). A seat whose heartbeat is older
  *                 than `DISCONNECT_TIMEOUT_MS` is considered empty.
- *   seating    -> `claim_seat` takes the first free/stale seat. If BOTH seats
- *                 are gone the room is reset to a brand-new `waiting` room
- *                 (the waiting room only reopens when both players are gone).
- *                 Otherwise the board/score state is preserved and the joiner
- *                 simply becomes the missing player.
+ *   session    -> `create_session` generates a code and seats the creator;
+ *                 `join_session` seats the opponent (or re-seats the creator).
+ *                 The game flips to `playing` the moment both seats are held.
  *   moves      -> every move goes through the `record_move` database function,
  *                 which re-validates the full game rules (phase, turn, empty
  *                 cell, opponent present) under a row lock, so two players can
@@ -29,10 +28,9 @@ import type { CellValue, GameRoom, Phase, Player, Seat, SetWinner } from '../typ
  *                 moment. All mutations are SECURITY DEFINER functions; the
  *                 table itself is select-only to anonymous clients.
  *   match flow -> the same function advances scores, set phase and match
- *                 phase, so all clients always converge on one truth.
+ *                 phase, so all clients always converge on one truth. Best of
+ *                 three: the creator plays X on odd sets and O on even ones.
  */
-
-const ROOM_ID = 1;
 
 let serverTimeOffsetMs: number | null = null;
 let syncPromise: Promise<number> | null = null;
@@ -62,7 +60,7 @@ export function getServerTimeOffset(): Promise<number> {
 
 /** Maps a single `room` row from Postgres to the app's `GameRoom` shape. */
 interface RoomRow {
-  id: number;
+  code: string;
   seat_x_session: string | null;
   seat_x_last_seen: number | null;
   seat_o_session: string | null;
@@ -74,11 +72,13 @@ interface RoomRow {
   set_winner: string | null;
   match_winner: string | null;
   move_count: number;
+  set_number: number;
   updated_at: number | null;
 }
 
 function mapRow(row: RoomRow): GameRoom {
   return {
+    code: row.code,
     seatX: row.seat_x_session ? { sessionId: row.seat_x_session, lastSeen: row.seat_x_last_seen } : null,
     seatO: row.seat_o_session ? { sessionId: row.seat_o_session, lastSeen: row.seat_o_last_seen } : null,
     board: row.board as CellValue[],
@@ -88,6 +88,7 @@ function mapRow(row: RoomRow): GameRoom {
     setWinner: row.set_winner as SetWinner,
     matchWinner: row.match_winner as Player | null,
     moveCount: row.move_count,
+    setNumber: row.set_number,
     updatedAt: row.updated_at,
   };
 }
@@ -107,11 +108,15 @@ export type RoomListener = (room: GameRoom | null) => void;
 export type RoomErrorListener = (error: Error) => void;
 
 /**
- * Subscribes to realtime updates of the single room row. `onNext` is called
+ * Subscribes to realtime updates of one session's row. `onNext` is called
  * once immediately with the current state and again on every change. Returns
  * an unsubscribe function.
  */
-export function listenToRoom(onNext: RoomListener, onError: RoomErrorListener): () => void {
+export function listenToRoom(
+  code: string,
+  onNext: RoomListener,
+  onError: RoomErrorListener,
+): () => void {
   const supabase = getClient();
   let lastUpdatedAt = -1;
   let disposed = false;
@@ -129,10 +134,10 @@ export function listenToRoom(onNext: RoomListener, onError: RoomErrorListener): 
   };
 
   const channel = supabase
-    .channel('room-realtime')
+    .channel(`room-realtime-${code}`)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'room' },
+      { event: '*', schema: 'public', table: 'room', filter: `code=eq.${code}` },
       (payload: RealtimePostgresChangesPayload<RoomRow>) => {
         apply((payload.new as RoomRow) ?? null);
       },
@@ -142,7 +147,7 @@ export function listenToRoom(onNext: RoomListener, onError: RoomErrorListener): 
   supabase
     .from('room')
     .select('*')
-    .eq('id', ROOM_ID)
+    .eq('code', code)
     .maybeSingle()
     .then(({ data, error }) => {
       if (error) {
@@ -158,65 +163,81 @@ export function listenToRoom(onNext: RoomListener, onError: RoomErrorListener): 
   };
 }
 
-export interface ClaimResult {
-  claimed: boolean;
-  symbol: Player | null;
+export interface CreateSessionResult {
+  code: string;
+  room: GameRoom;
 }
 
 /**
- * Attempts to seat the given session on the room. All rules are enforced
- * atomically inside the `claim_seat` database function.
+ * Creates a brand-new session. The database generates a shareable code and
+ * seats this client as the creator (X).
  */
-export async function claimSeat(sessionId: string): Promise<ClaimResult> {
-  const { data, error } = await getClient().rpc('claim_seat', { p_session: sessionId });
+export async function createSession(sessionId: string): Promise<CreateSessionResult> {
+  const { data, error } = await getClient().rpc('create_session', { p_session: sessionId });
+  if (error) throw new Error(error.message);
+  return { code: data.code as string, room: mapRow(data.room as RoomRow) };
+}
+
+export interface JoinSessionResult {
+  claimed: boolean;
+  room: GameRoom;
+}
+
+/**
+ * Joins an existing session by its code, taking the free/stale seat (usually
+ * O). Throws when the session does not exist or both seats are taken.
+ */
+export async function joinSession(code: string, sessionId: string): Promise<JoinSessionResult> {
+  const { data, error } = await getClient().rpc('join_session', { p_code: code, p_session: sessionId });
   if (error) throw new Error(error.message);
   return {
     claimed: Boolean(data?.claimed),
-    symbol: (data?.symbol as Player | null) ?? null,
+    room: mapRow(data.room as RoomRow),
   };
 }
 
 /**
- * Flips the room from `waiting` to `playing` as soon as both seats are held.
- * Idempotent and safe to call from every client.
+ * Flips the session from `waiting` to `playing` as soon as both seats are
+ * held. Idempotent and safe to call from every client.
  */
-export async function ensureGameStarted(): Promise<void> {
-  const { error } = await getClient().rpc('ensure_game_started');
+export async function ensureGameStarted(code: string): Promise<void> {
+  const { error } = await getClient().rpc('ensure_game_started', { p_code: code });
   if (error) throw new Error(error.message);
 }
 
 /**
  * Records one move. The `record_move` database function re-validates every
- * rule against the latest committed state under a row lock, so a move can
- * never be made out of turn, on a taken cell, after the set/match ended, or
- * against a disconnected opponent.
+ * rule against the latest committed state under a row lock and derives the
+ * mover's symbol from their seat + the set number, so a move can never be made
+ * out of turn, on a taken cell, after the set/match ended, or against a
+ * disconnected opponent.
  */
-export async function recordMove(sessionId: string, symbol: Player, index: number): Promise<void> {
+export async function recordMove(code: string, sessionId: string, index: number): Promise<void> {
   const { error } = await getClient().rpc('record_move', {
+    p_code: code,
     p_session: sessionId,
-    p_symbol: symbol,
     p_cell: index,
   });
   if (error) throw new Error(error.message);
 }
 
-/** Resets the board after a set ends; scores are intentionally kept. */
-export async function advanceToNextSet(): Promise<void> {
-  const { error } = await getClient().rpc('advance_next_set');
+/** Resets the board after a set ends and advances the set number; scores are kept. */
+export async function advanceToNextSet(code: string): Promise<void> {
+  const { error } = await getClient().rpc('advance_next_set', { p_code: code });
   if (error) throw new Error(error.message);
 }
 
 /**
- * Restarts the whole match. Resets board + scores but keeps the two connected
- * players seated, so the waiting room does not reopen.
+ * Restarts the whole match. Resets board + scores back to set 1 but keeps the
+ * two connected players seated.
  */
-export async function restartMatch(): Promise<void> {
-  const { error } = await getClient().rpc('restart_match');
+export async function restartMatch(code: string): Promise<void> {
+  const { error } = await getClient().rpc('restart_match', { p_code: code });
   if (error) throw new Error(error.message);
 }
 
 /** Refreshes this player's seat heartbeat so their seat is not reclaimed. */
-export async function sendHeartbeat(sessionId: string, symbol: Player): Promise<void> {
-  const { error } = await getClient().rpc('heartbeat', { p_session: sessionId, p_symbol: symbol });
+export async function sendHeartbeat(code: string, sessionId: string): Promise<void> {
+  const { error } = await getClient().rpc('heartbeat', { p_code: code, p_session: sessionId });
   if (error) throw new Error(error.message);
 }

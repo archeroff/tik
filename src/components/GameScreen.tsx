@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react';
+import { creatorSymbol, joinerSymbol } from '../game/engine';
 import type { GameRoomState } from '../hooks/useGameRoom';
 import { Board } from './Board';
 import { Overlay } from './Overlay';
 import { PlayerCard } from './PlayerCard';
 import { StatusBar } from './StatusBar';
 
-/** The full in-game screen: scoreboard, status line, board and state overlays. */
+/**
+ * The full in-game screen: room code, scoreboard (with the current-set
+ * symbols), status line, board and state overlays. The symbols each player
+ * shows alternate between sets (best of three).
+ */
 export function GameScreen({ game }: { game: GameRoomState }) {
-  const { phase, mySymbol, opponentSymbol, scores, opponentDisconnected, setWinner, matchWinner } = game;
+  const { phase, scores, opponentDisconnected, setWinner, matchWinner, setNumber } = game;
+
+  const creatorSym = creatorSymbol(setNumber);
+  const joinerSym = joinerSymbol(setNumber);
 
   // Transient "Let's get started!" banner whenever a fresh match enters play
   // (0-0 score, no moves yet). It shows for a few seconds or until the first
@@ -23,28 +31,32 @@ export function GameScreen({ game }: { game: GameRoomState }) {
     setShowWelcome(false);
   }, [phase, game.moveCount, scores.X, scores.O]);
 
-  const xIsTurn = phase === 'playing' && game.currentTurn === 'X';
-  const oIsTurn = phase === 'playing' && game.currentTurn === 'O';
+  const creatorTurn = phase === 'playing' && game.currentTurn === creatorSym;
+  const joinerTurn = phase === 'playing' && game.currentTurn === joinerSym;
 
   return (
     <div className="game">
+      <div className="game__code">
+        Room <code className="room-code">{game.code}</code>
+      </div>
+
       <div className="players">
         <PlayerCard
-          symbol="X"
+          symbol={creatorSym}
           score={scores.X}
-          isMe={mySymbol === 'X'}
-          isCurrentTurn={xIsTurn}
-          disconnected={opponentSymbol === 'X' && opponentDisconnected}
+          isMe={game.isCreator}
+          isCurrentTurn={creatorTurn}
+          disconnected={!game.isCreator && opponentDisconnected}
         />
         <div className="players__vs" aria-hidden="true">
           vs
         </div>
         <PlayerCard
-          symbol="O"
+          symbol={joinerSym}
           score={scores.O}
-          isMe={mySymbol === 'O'}
-          isCurrentTurn={oIsTurn}
-          disconnected={opponentSymbol === 'O' && opponentDisconnected}
+          isMe={game.isJoiner}
+          isCurrentTurn={joinerTurn}
+          disconnected={!game.isJoiner && opponentDisconnected}
         />
       </div>
 
@@ -60,8 +72,8 @@ export function GameScreen({ game }: { game: GameRoomState }) {
             </p>
             <p className="overlay__sub">
               {opponentDisconnected
-                ? 'The game is paused. It resumes as soon as a player joins.'
-                : 'The game starts as soon as a second player joins.'}
+                ? 'The game is paused. It resumes as soon as someone joins with this code.'
+                : 'Share this code with your opponent to start the game.'}
             </p>
           </Overlay>
         )}
@@ -72,7 +84,7 @@ export function GameScreen({ game }: { game: GameRoomState }) {
               {setWinner === 'draw' ? 'Draw!' : `Player ${setWinner} wins this set!`}
             </p>
             <p className="overlay__score">
-              X {scores.X} : {scores.O} O
+              {scores.X} : {scores.O}
             </p>
             <button type="button" className="btn btn--primary" onClick={game.nextSet}>
               Next Set
@@ -82,9 +94,9 @@ export function GameScreen({ game }: { game: GameRoomState }) {
 
         {phase === 'matchEnd' && (
           <Overlay tone="success">
-            <p className="overlay__title">🏆 Player {matchWinner} wins the match!</p>
+            <p className="overlay__title">Player {matchWinner} wins the match!</p>
             <p className="overlay__score">
-              X {scores.X} : {scores.O} O
+              {scores.X} : {scores.O}
             </p>
             <button type="button" className="btn btn--primary" onClick={game.restartMatch}>
               Restart Match

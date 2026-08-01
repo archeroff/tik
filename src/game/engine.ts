@@ -1,4 +1,4 @@
-import type { CellValue, GameRoom, Player, SetWinner } from '../types';
+import type { CellValue, Player, SetWinner } from '../types';
 
 /** Best-of-three match: first player to win this many sets takes the match. */
 export const MATCH_WINS = 2;
@@ -35,6 +35,20 @@ export function other(player: Player): Player {
   return player === 'X' ? 'O' : 'X';
 }
 
+/**
+ * The symbol the creator (the player who created the session, i.e. seat X)
+ * plays in a given 1-based set. Best-of-three: X on odd sets, O on even sets,
+ * so the "X starts first" advantage alternates between the two players.
+ */
+export function creatorSymbol(setNumber: number): Player {
+  return setNumber % 2 === 1 ? 'X' : 'O';
+}
+
+/** The symbol the joiner (seat O) plays in a given set. */
+export function joinerSymbol(setNumber: number): Player {
+  return other(creatorSymbol(setNumber));
+}
+
 export function emptyBoard(): CellValue[] {
   return Array<CellValue>(9).fill(null);
 }
@@ -60,22 +74,4 @@ export function evaluateBoard(board: CellValue[]): BoardResult {
     return { winner: 'draw', line: [] };
   }
   return { winner: null, line: [] };
-}
-
-/**
- * Shape of a brand-new room. Used when a client claims a seat while both seats
- * are empty/stale — i.e. the waiting room only reopens once both players are gone.
- */
-export function createInitialRoom(seatXSessionId: string): Omit<GameRoom, 'updatedAt'> {
-  return {
-    seatX: { sessionId: seatXSessionId, lastSeen: 0 },
-    seatO: null,
-    board: emptyBoard(),
-    currentTurn: 'X',
-    scores: { X: 0, O: 0 },
-    phase: 'waiting',
-    setWinner: null,
-    matchWinner: null,
-    moveCount: 0,
-  };
 }
